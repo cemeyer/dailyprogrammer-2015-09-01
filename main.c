@@ -9,6 +9,11 @@
 #include <unistd.h>
 
 #define	ARRAY_LEN(a)	(sizeof(a) / sizeof(a[0]))
+#define	MIN(a, b)	({						\
+	typeof(a) _min1 = (a);						\
+	typeof(b) _min2 = (b);						\
+	(void) (&_min1 == &_min2);					\
+	_min1 < _min2 ? _min1 : _min2; })
 
 struct piece {
 	unsigned n_orient;
@@ -314,7 +319,7 @@ parse(FILE *f)
 	for (line = 1;; line++) {
 		n = fscanf(f, "%6s = %u\n", str, &ct);
 		if (n == EOF)
-			return;
+			break;
 
 		if (n < 2)
 			errx(EX_USAGE, "failed to parse at line: %u", line);
@@ -338,6 +343,10 @@ static struct move move[128];
 static unsigned board_x, board_y;
 static uint64_t board_tries;
 static uint8_t *board;
+static uint8_t *board_flood;
+
+#define	BOARD_SQ(x, y)	board[ board_x * (y) + (x) ]
+#define	FILL_SQ(x, y)	board_flood[ board_x * (y) + (x) ]
 
 enum plhow {
 	PLACE_TRY,
@@ -473,6 +482,102 @@ win(unsigned depth)
 	exit(0);
 }
 
+/* It saves work to only clean once at the end */
+static unsigned
+floodfillct(unsigned x, unsigned y)
+{
+	unsigned ct;
+	int dx, dy;
+
+	if (x >= board_x || y >= board_y)
+		return (0);
+
+	if (BOARD_SQ(x, y) != 0)
+		return (0);
+
+	if (FILL_SQ(x, y) != 0)
+		return (0);
+
+	FILL_SQ(x, y) = 1;
+	ct = 1;
+
+	for (dx = -1; dx < 2; dx += 2)
+		ct += floodfillct(x + dx, y);
+	for (dy = -1; dy < 2; dy += 2)
+		ct += floodfillct(x, y + dy);
+
+	return (ct);
+}
+
+/*
+ * Flood fill from piece edges; if any space is not mod 4 blocks, the board is
+ * toast; return TRUE.
+ */
+static bool
+holemodfail(unsigned x, unsigned y, const struct piece_or *orp)
+{
+	unsigned ct, spr_x, spr_y, px, py;
+	bool fail;
+
+	fail = false;
+
+	/* Check possible boundary pixels around the newly placed piece. */
+	for (spr_x = 0; spr_x < orp->x; spr_x++) {
+		for (spr_y = 0; spr_y < orp->y; spr_y++) {
+			if (orp->bitmap[orp->x * spr_y + spr_x] != 0)
+				continue;
+
+			ct = floodfillct(x + spr_x, y + spr_y);
+			if (ct % 4 != 0) {
+				fail = true;
+				goto out;
+			}
+		}
+	}
+
+	/* Four borders */
+	for (px = MIN(x - 1, x); px < x + orp->x + 1; px++) {
+		/* top */
+		if (y - 1 < board_y) {
+			ct = floodfillct(px, y - 1);
+			if (ct % 4 != 0) {
+				fail = true;
+				goto out;
+			}
+		}
+		/* bottom */
+		if (y + orp->y < board_y) {
+			ct = floodfillct(px, y + orp->y);
+			if (ct % 4 != 0) {
+				fail = true;
+				goto out;
+			}
+		}
+	}
+	for (py = MIN(y - 1, y); py < y + orp->y + 1; py++) {
+		/* left */
+		if (x - 1 < board_x) {
+			ct = floodfillct(x - 1, py);
+			if (ct % 4 != 0) {
+				fail = true;
+				goto out;
+			}
+		}
+		/* right */
+		if (x + orp->x < board_x) {
+			ct = floodfillct(x + orp->x, py);
+			if (ct % 4 != 0) {
+				fail = true;
+				goto out;
+			}
+		}
+	}
+
+out:
+	memset(board_flood, 0, board_x * board_y * sizeof(board_flood[0]));
+	return (fail);
+}
+
 static void
 solve(unsigned depth)
 {
@@ -509,6 +614,13 @@ solve(unsigned depth)
 						continue;
 
 					place(p_x, p_y, orp, &sp->ct);
+					if (holemodfail(p_x, p_y, orp)) {
+#if 0
+						printf("Culled a board:\n");
+						printboard(depth);
+#endif
+						goto next;
+					}
 
 					move[depth].p_name = sp->str;
 					move[depth].p_orient = or;
@@ -524,6 +636,7 @@ solve(unsigned depth)
 						printf("attempted %lu boards\n", board_tries);
 					solve(depth + 1);
 
+next:
 					unplace(p_x, p_y, orp, &sp->ct);
 				}
 			}
@@ -557,8 +670,12 @@ main(int argc, char **argv)
 	board = malloc(board_x * board_y * sizeof(board[0]));
 	if (board == NULL)
 		err(EX_OSERR, "malloc");
-
 	memset(board, 0, board_x * board_y * sizeof(board[0]));
+	board_flood = malloc(board_x * board_y * sizeof(board_flood[0]));
+	if (board_flood == NULL)
+		err(EX_OSERR, "malloc");
+	memset(board_flood, 0, board_x * board_y * sizeof(board_flood[0]));
+
 	solve(0);
 
 	printf("No solution\n");
