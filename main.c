@@ -350,6 +350,7 @@ static uint8_t *board_flood;
 
 #define	BOARD_SQ(x, y)	board[ board_x * (y) + (x) ]
 #define	FILL_SQ(x, y)	board_flood[ board_x * (y) + (x) ]
+#define	ORIENT_SQ(o, xx, yy)	(o)->bitmap[ (o)->x * (yy) + (xx)]
 
 enum plhow {
 	PLACE_TRY,
@@ -442,7 +443,7 @@ printboard(unsigned depth)
 }
 
 static void
-printpiece(const char *nm, unsigned orient)
+printpiece(const char *nm, unsigned orient, unsigned x, unsigned y)
 {
 	const struct piece_or *orp;
 	struct str_to_piece *sp;
@@ -458,16 +459,60 @@ printpiece(const char *nm, unsigned orient)
 		errx(EX_OSERR, "i dumb %d", __LINE__);
 
 	orp = &sp->pc->orients[orient];
-	for (spr_y = 0; spr_y < orp->y; spr_y++) {
-		putchar('\t');
-		for (spr_x = 0; spr_x < orp->x; spr_x++) {
-			if (orp->bitmap[orp->x * spr_y + spr_x] == 0)
+
+	fputs("\t    ", stdout);
+	for (spr_x = 0; spr_x < board_x; spr_x++)
+		putchar('-');
+	putchar('\n');
+	for (spr_y = 0; spr_y < board_y; spr_y++) {
+		printf("\t%2u |", spr_y);
+
+		if (spr_y < y || spr_y >= y + orp->y) {
+			for (spr_x = 0; spr_x < board_x; spr_x++)
+				putchar(' ');
+			puts("|");
+			continue;
+		}
+
+		for (spr_x = 0; spr_x < board_x; spr_x++) {
+			if (spr_x < x || spr_x >= x + orp->x) {
+				putchar(' ');
+				continue;
+			}
+
+			if (ORIENT_SQ(orp, spr_x - x, spr_y - y) == 0)
 				putchar(' ');
 			else
 				putchar('#');
 		}
-		putchar('\n');
+		puts("|");
 	}
+	fputs("\t    ", stdout);
+	for (spr_x = 0; spr_x < board_x; spr_x++)
+		putchar('-');
+	putchar('\n');
+}
+
+static int
+piece_order(const void *va, const void *vb)
+{
+	const struct move *m1, *m2;
+
+	m1 = va;
+	m2 = vb;
+
+	if (m1->y < m2->y)
+		return (-1);
+	else if (m2->y < m1->y)
+		return (1);
+
+	if (m1->x < m2->x)
+		return (-1);
+	else if (m2->x < m1->x)
+		return (1);
+
+	/* Arbitrary tie-breaker */
+	return (strcmp(m1->p_name, m2->p_name));
 }
 
 static void
@@ -476,11 +521,15 @@ win(unsigned depth)
 	unsigned i;
 
 	printf("Win!\n\n");
+
+	qsort(move, depth, sizeof(move[0]), piece_order);
 	for (i = 0; i < depth; i++) {
 		printf("Piece %s at [%u,%u] orientation %u\n", move[i].p_name,
 		    move[i].x, move[i].y, move[i].p_orient);
-		printpiece(move[i].p_name, move[i].p_orient);
+		printpiece(move[i].p_name, move[i].p_orient, move[i].x,
+		    move[i].y);
 	}
+
 	fflush(stdout);
 	exit(0);
 }
