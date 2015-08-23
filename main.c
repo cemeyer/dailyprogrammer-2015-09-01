@@ -260,6 +260,7 @@ static const struct piece square = {
 
 struct str_to_piece {
 	const char *str;
+	const char *std_name;
 	const struct piece *pc;
 
 	unsigned ct;
@@ -268,16 +269,17 @@ struct str_to_piece {
 static unsigned total_pc;
 static struct str_to_piece parse_lut[] = {
 #define	X_IDX	0
-	{ "x", NULL },
+	{ "x",  "x", NULL },
 #define	Y_IDX	1
-	{ "y", NULL },
-	{ "e1", &egypt1 },
-	{ "e2", &egypt2 },
-	{ "ln", &line },
-	{ "l1", &ell1 },
-	{ "l2", &ell2 },
-	{ "tr", &triangle },
-	{ "sq", &square },
+	{ "y",  "y", NULL },
+
+	{ "e1", "Z", &egypt1 },
+	{ "e2", "S", &egypt2 },
+	{ "ln", "I", &line },
+	{ "l1", "L", &ell1 },
+	{ "l2", "J", &ell2 },
+	{ "tr", "T", &triangle },
+	{ "sq", "O", &square },
 	{ 0 }
 };
 
@@ -287,7 +289,8 @@ parse_set(const char *what, unsigned howmany, unsigned line)
 	struct str_to_piece *sp;
 
 	for (sp = parse_lut; sp->str != NULL; sp++) {
-		if (strcmp(sp->str, what) != 0)
+		if (strcmp(sp->str, what) != 0 &&
+		    strcmp(sp->std_name, what) != 0)
 			continue;
 
 		if (sp->ct != 0)
@@ -446,7 +449,7 @@ printpiece(const char *nm, unsigned orient)
 	unsigned spr_x, spr_y;
 
 	for (sp = parse_lut; sp->str != NULL; sp++)
-		if (strcmp(sp->str, nm) == 0)
+		if (strcmp(sp->std_name, nm) == 0)
 			break;
 
 	if (sp->str == NULL)
@@ -622,7 +625,7 @@ solve(unsigned depth)
 						goto next;
 					}
 
-					move[depth].p_name = sp->str;
+					move[depth].p_name = sp->std_name;
 					move[depth].p_orient = or;
 					move[depth].x = p_x;
 					move[depth].y = p_y;
