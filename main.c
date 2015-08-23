@@ -461,35 +461,48 @@ printpiece(const char *nm, unsigned orient, unsigned x, unsigned y)
 	orp = &sp->pc->orients[orient];
 
 	fputs("\t    ", stdout);
-	for (spr_x = 0; spr_x < board_x; spr_x++)
-		putchar('-');
+	for (spr_x = 0; spr_x < MIN(board_x, 100U); spr_x++)
+		printf("%-2u", spr_x);
 	putchar('\n');
+
+	fputs("\t    ", stdout);
+	for (spr_x = 0; spr_x < board_x; spr_x++)
+		fputs("--", stdout);
+	putchar('\n');
+
 	for (spr_y = 0; spr_y < board_y; spr_y++) {
 		printf("\t%2u |", spr_y);
 
 		if (spr_y < y || spr_y >= y + orp->y) {
 			for (spr_x = 0; spr_x < board_x; spr_x++)
-				putchar(' ');
+				fputs("  ", stdout);
 			puts("|");
 			continue;
 		}
 
 		for (spr_x = 0; spr_x < board_x; spr_x++) {
 			if (spr_x < x || spr_x >= x + orp->x) {
-				putchar(' ');
+				fputs("  ", stdout);
 				continue;
 			}
 
-			if (ORIENT_SQ(orp, spr_x - x, spr_y - y) == 0)
-				putchar(' ');
-			else
+			if (ORIENT_SQ(orp, spr_x - x, spr_y - y) == 0) {
+				fputs("  ", stdout);
+				continue;
+			}
+
+			putchar('#');
+			if (spr_x + 1 < x + orp->x &&
+			    ORIENT_SQ(orp, spr_x + 1 - x, spr_y - y) != 0)
 				putchar('#');
+			else
+				putchar(' ');
 		}
 		puts("|");
 	}
 	fputs("\t    ", stdout);
 	for (spr_x = 0; spr_x < board_x; spr_x++)
-		putchar('-');
+		fputs("--", stdout);
 	putchar('\n');
 }
 
