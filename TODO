@@ -1,2 +1,8 @@
-- Bitmasking placement
+UI:
+- Print results in some way that conveys the idea without board-per-piece.
+  Perhaps one board with pieces colored by letter name.
+
+Potential speed improvements:
+- Zobrist hashing of game state (board + rotations and flips, (?) remaining pieces)
 - Flood unfill
+- Bitmasking try/place/unplace
