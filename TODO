@@ -1,4 +1,3 @@
 Potential speed improvements:
-- Zobrist hashing of game state (board + rotations and flips, (?) remaining pieces)
 - Flood unfill
 - Bitmasking try/place/unplace

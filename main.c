@@ -8,12 +8,8 @@
 #include <sysexits.h>
 #include <unistd.h>
 
-#define	ARRAY_LEN(a)	(sizeof(a) / sizeof(a[0]))
-#define	MIN(a, b)	({						\
-	typeof(a) _min1 = (a);						\
-	typeof(b) _min2 = (b);						\
-	(void) (&_min1 == &_min2);					\
-	_min1 < _min2 ? _min1 : _min2; })
+#include "zobrist.h"
+#include "solver.h"
 
 struct piece {
 	unsigned n_orient;
@@ -258,16 +254,8 @@ static const struct piece square = {
 #undef	X
 #undef	_
 
-struct str_to_piece {
-	const char *str;
-	const char *std_name;
-	const struct piece *pc;
-
-	unsigned ct;
-};
-
 static unsigned total_pc;
-static struct str_to_piece parse_lut[] = {
+struct str_to_piece parse_lut[] = {
 #define	X_IDX	0
 	{ "x",  "x", NULL },
 #define	Y_IDX	1
@@ -302,8 +290,10 @@ parse_set(const char *what, unsigned howmany, unsigned line)
 		    howmany);
 #endif
 		sp->ct = howmany;
-		if (sp->pc != NULL)
+		if (sp->pc != NULL) {
 			total_pc += howmany;
+			zob_piece_init(sp);
+		}
 		return;
 	}
 
@@ -343,9 +333,9 @@ struct move {
 };
 
 static struct move move[128];
-static unsigned board_x, board_y;
+unsigned board_x, board_y;
 static uint64_t board_tries;
-static uint8_t *board;
+uint8_t *board;
 static uint8_t *board_flood;
 
 #define	BOARD_SQ(x, y)	board[ board_x * (y) + (x) ]
@@ -650,6 +640,9 @@ solve(unsigned depth)
 	if (total_pc == 0)
 		win(depth);
 
+	if (zob_seen_this())
+		return;
+
 	/* If we can, play a piece */
 	for (sp = parse_lut; sp->str != NULL; sp++) {
 		if (sp->pc == NULL)
@@ -697,6 +690,8 @@ next:
 			}
 		}
 	}
+
+	zob_record_this();
 }
 
 int
@@ -708,6 +703,8 @@ main(int argc, char **argv)
 
 	if (argc < 2)
 		errx(EX_USAGE, "solver: input");
+
+	zob_init_first();
 
 	f = fopen(argv[1], "rb");
 	if (f == NULL)
@@ -721,6 +718,8 @@ main(int argc, char **argv)
 
 	board_x = parse_lut[X_IDX].ct;
 	board_y = parse_lut[Y_IDX].ct;
+
+	zob_board_init(board_x, board_y);
 
 	board = malloc(board_x * board_y * sizeof(board[0]));
 	if (board == NULL)
