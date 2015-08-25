@@ -443,11 +443,14 @@ printboard(unsigned depth)
 }
 
 static void
-printpiece(const char *nm, unsigned orient, unsigned x, unsigned y)
+drawpiece(char *bs, const char *nm, unsigned orient, unsigned x, unsigned y)
 {
 	const struct piece_or *orp;
 	struct str_to_piece *sp;
 	unsigned spr_x, spr_y;
+	char letter;
+
+	letter = *nm;
 
 	for (sp = parse_lut; sp->str != NULL; sp++)
 		if (strcmp(sp->std_name, nm) == 0)
@@ -459,89 +462,76 @@ printpiece(const char *nm, unsigned orient, unsigned x, unsigned y)
 		errx(EX_OSERR, "i dumb %d", __LINE__);
 
 	orp = &sp->pc->orients[orient];
-
-	fputs("\t    ", stdout);
-	for (spr_x = 0; spr_x < MIN(board_x, 100U); spr_x++)
-		printf("%-2u", spr_x);
-	putchar('\n');
-
-	fputs("\t    ", stdout);
-	for (spr_x = 0; spr_x < board_x; spr_x++)
-		fputs("--", stdout);
-	putchar('\n');
-
-	for (spr_y = 0; spr_y < board_y; spr_y++) {
-		printf("\t%2u |", spr_y);
-
-		if (spr_y < y || spr_y >= y + orp->y) {
-			for (spr_x = 0; spr_x < board_x; spr_x++)
-				fputs("  ", stdout);
-			puts("|");
-			continue;
-		}
-
-		for (spr_x = 0; spr_x < board_x; spr_x++) {
-			if (spr_x < x || spr_x >= x + orp->x) {
-				fputs("  ", stdout);
+	for (spr_y = y; spr_y < y + orp->y; spr_y++) {
+		for (spr_x = x; spr_x < x + orp->x; spr_x++) {
+			if (ORIENT_SQ(orp, spr_x - x, spr_y - y) == 0)
 				continue;
-			}
 
-			if (ORIENT_SQ(orp, spr_x - x, spr_y - y) == 0) {
-				fputs("  ", stdout);
-				continue;
-			}
-
-			putchar('#');
+			bs[2 * spr_y * (board_x * 2) + (spr_x * 2)] = letter;
 			if (spr_x + 1 < x + orp->x &&
 			    ORIENT_SQ(orp, spr_x + 1 - x, spr_y - y) != 0)
-				putchar('#');
-			else
-				putchar(' ');
+				bs[2 * spr_y * (board_x * 2) + (spr_x * 2) + 1] =
+				    letter;
+			if (spr_y + 1 < y + orp->y &&
+			    ORIENT_SQ(orp, spr_x - x, spr_y + 1 - y) != 0)
+				bs[(2 * spr_y + 1) * (board_x * 2) + (spr_x * 2)] =
+				    letter;
 		}
-		puts("|");
 	}
-	fputs("\t    ", stdout);
-	for (spr_x = 0; spr_x < board_x; spr_x++)
-		fputs("--", stdout);
-	putchar('\n');
 }
 
-static int
-piece_order(const void *va, const void *vb)
+static void
+printpboard(const char *bs)
 {
-	const struct move *m1, *m2;
+	unsigned px, py;
 
-	m1 = va;
-	m2 = vb;
+	fputs("\t    ", stdout);
+	for (px = 0; px < MIN(board_x, 100U); px++)
+		printf("%-2u", px);
+	putchar('\n');
 
-	if (m1->y < m2->y)
-		return (-1);
-	else if (m2->y < m1->y)
-		return (1);
+	fputs("\t    ", stdout);
+	for (px = 0; px < board_x - 1; px++)
+		fputs("--", stdout);
+	puts("-");
 
-	if (m1->x < m2->x)
-		return (-1);
-	else if (m2->x < m1->x)
-		return (1);
+	for (py = 0; py < 2 * board_y - 1; py++) {
+		if (py % 2 == 0)
+			printf("\t%2u |%.*s|\n", py / 2, (int)board_x * 2 - 1,
+			    &bs[py * (board_x * 2)]);
+		else
+			printf("\t   |%.*s|\n", (int)board_x * 2 - 1,
+			    &bs[py * (board_x * 2)]);
+	}
 
-	/* Arbitrary tie-breaker */
-	return (strcmp(m1->p_name, m2->p_name));
+	fputs("\t    ", stdout);
+	for (px = 0; px < board_x - 1; px++)
+		fputs("--", stdout);
+	puts("-");
 }
 
 static void
 win(unsigned depth)
 {
 	unsigned i;
+	char *boardstr;
 
 	printf("Win!\n\n");
 
-	qsort(move, depth, sizeof(move[0]), piece_order);
+	boardstr = malloc((board_x * 2) * (board_y * 2) + 1);
+	if (boardstr == NULL)
+		err(EX_OSERR, "malloc");
+	memset(boardstr, ' ', (board_x * 2) * (board_y * 2));
+
 	for (i = 0; i < depth; i++) {
 		printf("Piece %s at [%u,%u] orientation %u\n", move[i].p_name,
 		    move[i].x, move[i].y, move[i].p_orient);
-		printpiece(move[i].p_name, move[i].p_orient, move[i].x,
-		    move[i].y);
+		drawpiece(boardstr, move[i].p_name, move[i].p_orient,
+		    move[i].x, move[i].y);
 	}
+
+	printpboard(boardstr);
+	free(boardstr);
 
 	fflush(stdout);
 	exit(0);
