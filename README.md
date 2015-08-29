@@ -24,34 +24,16 @@ Output:
     Win!
     
     Piece Z at [0,0] orientation 0
-                0 1 2 3
-                --------
-             0 |###     |
-             1 |  ###   |
-             2 |        |
-             3 |        |
-                --------
     Piece L at [2,0] orientation 1
-                0 1 2 3
-                --------
-             0 |    ### |
-             1 |      # |
-             2 |      # |
-             3 |        |
-                --------
+    Piece T at [1,2] orientation 2
     Piece T at [0,1] orientation 3
                 0 1 2 3
-                --------
-             0 |        |
-             1 |#       |
-             2 |###     |
-             3 |#       |
-                --------
-    Piece T at [1,2] orientation 2
-                0 1 2 3
-                --------
-             0 |        |
-             1 |        |
-             2 |    #   |
-             3 |  ##### |
-                --------
+                -------
+             0 |ZZZ LLL|
+               |  Z   L|
+             1 |T ZZZ L|
+               |T     L|
+             2 |TTT T L|
+               |T   T  |
+             3 |T TTTTT|
+                -------
