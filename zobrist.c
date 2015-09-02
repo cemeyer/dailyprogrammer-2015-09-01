@@ -58,7 +58,7 @@ zob_init_first(void)
 }
 
 void
-zob_piece_init(struct str_to_piece *sp)
+zob_piece_init(struct words *sp)
 {
 	struct z_pc *pc;
 	unsigned i;
@@ -79,11 +79,11 @@ zob_board_init(unsigned x, unsigned y)
 {
 	unsigned i;
 
-	zob_board = malloc(x * y * sizeof(*zob_board));
+	zob_board = malloc(28 * x * y * sizeof(*zob_board));
 	if (zob_board == NULL)
 		err(EX_OSERR, "malloc");
 
-	for (i = 0; i < x * y; i++)
+	for (i = 0; i < x * y * 28; i++)
 		zob_board[i] = get_a_zval();
 
 	scratchb1 = malloc(board_x * board_y * sizeof(*scratchb1));
@@ -92,6 +92,21 @@ zob_board_init(unsigned x, unsigned y)
 	scratchb2 = malloc(board_x * board_y * sizeof(*scratchb2));
 	if (scratchb2 == NULL)
 		err(EX_OSERR, "malloc");
+}
+
+z128_t
+board_zval(unsigned coord, uint8_t letter)
+{
+	unsigned offset;
+
+	if ('A' <= letter && letter <= 'Z')
+		offset = letter - 'A';
+	else if (letter == '-')
+		offset = 26;
+	else
+		offset = 27;
+
+	return (zob_board[coord * 28 + offset]);
 }
 
 bool
@@ -165,21 +180,52 @@ flipboardver(uint8_t *dst, const uint8_t *src)
 			    src[board_x * y + (board_x - 1 - x)];
 }
 
+uint8_t zerorow[1024];
 static z128_t
 game_state(uint8_t *a_board)
 {
-	struct str_to_piece *sp;
+	struct words *sp;
 	z128_t val;
-	unsigned i;
+	unsigned i, j;
+
+	unsigned by, bx, bw, bh;
+	bool nonz;
+
+	bx = by = 0;
+	bw = board_x;
+	bh = board_y;
+
+	for (by = 0; by < board_y && memcmp(zerorow, &a_board[by * board_x], board_x) == 0; by++)
+		bh--;
+
+	nonz = false;
+	while (!nonz && bx < board_x) {
+		for (i = by; i < board_y; i++) {
+			if (a_board[i * board_x + bx] != 0) {
+				nonz = true;
+				break;
+			}
+		}
+
+		if (!nonz) {
+			bx++;
+			bw--;
+		}
+	}
+
+	/* Top by rows and left bx cols are zero, ignore */
 
 	memset(&val, 0, sizeof(val));
 
-	for (i = 0; i < board_x * board_y; i++)
-		if (a_board[i] != 0)
-			zxor(&val, zob_board[i]);
+	for (j = 0; j < bh; j++)
+		for (i = 0; i < bw; i++)
+			if (a_board[ board_x * (by + j) + bx + i ])
+				zxor(&val,
+				    board_zval(board_x * j + i,
+					a_board[ board_x * (by + j) + bx + i ]));
 
-	for (sp = parse_lut; sp->str != NULL; sp++)
-		for (i = 0; sp->pc != NULL && i < sp->ct; i++)
+	for (sp = words; *sp->str != '\0'; sp++)
+		for (i = 0; i < sp->ct; i++)
 			zxor(&val, sp->pc_zob.values[i]);
 
 	return (val);

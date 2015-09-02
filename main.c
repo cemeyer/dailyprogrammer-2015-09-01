@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <err.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -11,342 +12,99 @@
 #include "zobrist.h"
 #include "solver.h"
 
-struct piece {
-	unsigned n_orient;
-	struct piece_or {
-		unsigned x, y;
-		int bitmap[6];
-	} orients[4];
-};
-
-#define	X	1
-#define	_	0
-
-/*
- * ##
- *  ##
- */
-static const struct piece egypt1 = {
-	.n_orient = 2,
-	.orients = {
-		{
-			.x = 3,
-			.y = 2,
-			.bitmap = {
-				X, X, _,
-				_, X, X,
-			},
-		},
-		{
-			.x = 2,
-			.y = 3,
-			.bitmap = {
-				_, X,
-				X, X,
-				X, _,
-			},
-		},
-	},
-};
-
-/*
- *  ##
- * ##
- */
-static const struct piece egypt2 = {
-	.n_orient = 2,
-	.orients = {
-		{
-			.x = 3,
-			.y = 2,
-			.bitmap = {
-				_, X, X,
-				X, X, _,
-			},
-		},
-		{
-			.x = 2,
-			.y = 3,
-			.bitmap = {
-				X, _,
-				X, X,
-				_, X,
-			},
-		},
-	},
-};
-
-/*
- * ####
- */
-static const struct piece line = {
-	.n_orient = 2,
-	.orients = {
-		{
-			.x = 4,
-			.y = 1,
-			.bitmap = {
-				X, X, X, X,
-			},
-		},
-		{
-			.x = 1,
-			.y = 4,
-			.bitmap = {
-				X,
-				X,
-				X,
-				X,
-			},
-		},
-	},
-};
-
-/*
- * ###
- * #
- */
-static const struct piece ell1 = {
-	.n_orient = 4,
-	.orients = {
-		{
-			.x = 3,
-			.y = 2,
-			.bitmap = {
-				X, X, X,
-				X, _, _,
-			},
-		},
-		{
-			.x = 2,
-			.y = 3,
-			.bitmap = {
-				X, X,
-				_, X,
-				_, X,
-			},
-		},
-		{
-			.x = 3,
-			.y = 2,
-			.bitmap = {
-				_, _, X,
-				X, X, X,
-			},
-		},
-		{
-			.x = 2,
-			.y = 3,
-			.bitmap = {
-				X, _,
-				X, _,
-				X, X,
-			},
-		},
-	},
-};
-
-/*
- * ###
- *   #
- */
-static const struct piece ell2 = {
-	.n_orient = 4,
-	.orients = {
-		{
-			.x = 3,
-			.y = 2,
-			.bitmap = {
-				X, X, X,
-				_, _, X,
-			},
-		},
-		{
-			.x = 2,
-			.y = 3,
-			.bitmap = {
-				_, X,
-				_, X,
-				X, X,
-			},
-		},
-		{
-			.x = 3,
-			.y = 2,
-			.bitmap = {
-				X, _, _,
-				X, X, X,
-			},
-		},
-		{
-			.x = 2,
-			.y = 3,
-			.bitmap = {
-				X, X,
-				X, _,
-				X, _,
-			},
-		},
-	},
-};
-
-/*
- *  #
- * ###
- */
-static const struct piece triangle = {
-	.n_orient = 4,
-	.orients = {
-		{
-			.x = 3,
-			.y = 2,
-			.bitmap = {
-				X, X, X,
-				_, X, _,
-			},
-		},
-		{
-			.x = 2,
-			.y = 3,
-			.bitmap = {
-				_, X,
-				X, X,
-				_, X,
-			},
-		},
-		{
-			.x = 3,
-			.y = 2,
-			.bitmap = {
-				_, X, _,
-				X, X, X,
-			},
-		},
-		{
-			.x = 2,
-			.y = 3,
-			.bitmap = {
-				X, _,
-				X, X,
-				X, _,
-			},
-		},
-	},
-};
-
-/*
- * ##
- * ##
- */
-static const struct piece square = {
-	.n_orient = 1,
-	.orients = {
-		{
-			.x = 2,
-			.y = 2,
-			.bitmap = {
-				X, X,
-				X, X,
-			},
-		},
-	},
-};
-#undef	X
-#undef	_
-
 static unsigned total_pc;
-struct str_to_piece parse_lut[] = {
-#define	X_IDX	0
-	{ "x",  "x", NULL },
-#define	Y_IDX	1
-	{ "y",  "y", NULL },
-
-	{ "e1", "Z", &egypt1 },
-	{ "e2", "S", &egypt2 },
-	{ "ln", "I", &line },
-	{ "l1", "L", &ell1 },
-	{ "l2", "J", &ell2 },
-	{ "tr", "T", &triangle },
-	{ "sq", "O", &square },
-	{ 0 }
-};
+struct words words[16];
 
 static void
-parse_set(const char *what, unsigned howmany, unsigned line)
+parse_set(const char *what)
 {
-	struct str_to_piece *sp;
+	struct words *sp;
 
-	for (sp = parse_lut; sp->str != NULL; sp++) {
-		if (strcmp(sp->str, what) != 0 &&
-		    strcmp(sp->std_name, what) != 0)
-			continue;
-
-		if (sp->ct != 0)
-			errx(EX_USAGE, "one line per type (line: %u, type: %s)",
-			    line, what);
-
-#if 0
-		printf("XXX: %s: [%u] %s = %u\n", __func__, line, what,
-		    howmany);
-#endif
-		sp->ct = howmany;
-		if (sp->pc != NULL) {
-			total_pc += howmany;
-			zob_piece_init(sp);
-		}
-		return;
+	for (sp = words; sp->ct != 0; sp++) {
+		if (strcmp(sp->str, what) == 0)
+			break;
 	}
 
-	errx(EX_USAGE, "unrecognized type %s at line: %u", what, line);
+	if (sp->ct == 0) {
+		strcpy(sp->str, what);
+		sp->len = strlen(sp->str);
+	}
+	sp->ct++;
+	total_pc++;
+
+	board_x = MAX(board_x, sp->len * 3);
+	board_y = MAX(board_y, sp->len * 2);
 }
 
+char astr[128];
 static void
 parse(FILE *f)
 {
-	char str[8];
-	unsigned ct, line, x, y;
+	struct words *sp;
+	unsigned word;
 	int n;
 
-	memset(str, 0, sizeof(str));
+	memset(astr, 0, sizeof(astr));
 
-	for (line = 1;; line++) {
-		n = fscanf(f, "%6s = %u\n", str, &ct);
+	for (word = 1;; word++) {
+		n = fscanf(f, "%127[a-z'-], ", astr);
 		if (n == EOF)
 			break;
 
-		if (n < 2)
-			errx(EX_USAGE, "failed to parse at line: %u", line);
+		if (n < 1)
+			errx(EX_USAGE, "failed to parse at word: %u", word);
 
-		parse_set(str, ct, line);
+		parse_set(astr);
 	}
 
-	x = parse_lut[X_IDX].ct;
-	y = parse_lut[Y_IDX].ct;
-	if (x == 0 || y == 0 || (x * y) != (4 * total_pc))
-		errx(EX_USAGE, "%s: mismatched board: [%u x %u] and %u pieces",
-		    __func__, x, y, total_pc);
+	for (sp = words; sp->ct != 0; sp++)
+		zob_piece_init(sp);
 }
 
+#define	OR_HOR	0
+#define	OR_VER	1
 struct move {
 	const char *p_name;
 	unsigned p_orient, x, y;
 };
 
 static struct move move[128];
-unsigned board_x, board_y;
+unsigned board_x, board_y, total_match;
 static uint64_t board_tries;
-uint8_t *board;
-static uint8_t *board_flood;
+uint8_t *board, *match;
+
+static struct move movebest[128];
+static unsigned bestscore;
 
 #define	BOARD_SQ(x, y)	board[ board_x * (y) + (x) ]
-#define	FILL_SQ(x, y)	board_flood[ board_x * (y) + (x) ]
-#define	ORIENT_SQ(o, xx, yy)	(o)->bitmap[ (o)->x * (yy) + (xx)]
+#define	MATCH_SQ(x, y)	match[ board_x * (y) + (x) ]
 
 enum plhow {
 	PLACE_TRY,
 	PLACE_DO,
 	PLACE_UNDO,
 };
+
+struct piece_or {
+	struct words *wp;
+	unsigned x, y,	/* w x h */
+		 or;
+};
+
+static char
+orp_letter(const struct piece_or *orp, unsigned x, unsigned y)
+{
+
+	if (orp->or == OR_HOR) {
+		if (orp->wp->len <= x)
+			err(1, "dumb %d", __LINE__);
+		return (toupper(orp->wp->str[x]));
+	} else {
+		if (orp->wp->len <= y)
+			err(1, "dumb %d", __LINE__);
+		return (toupper(orp->wp->str[y]));
+	}
+}
 
 static bool
 _tryplace(unsigned x, unsigned y, const struct piece_or *orp, unsigned *ct,
@@ -362,23 +120,33 @@ _tryplace(unsigned x, unsigned y, const struct piece_or *orp, unsigned *ct,
 
 	for (spr_x = 0; spr_x < orp->x; spr_x++) {
 		for (spr_y = 0; spr_y < orp->y; spr_y++) {
-			if (orp->bitmap[orp->x * spr_y + spr_x] == 0)
-				continue;
-
 			pix_x = x + spr_x;
 			pix_y = y + spr_y;
-			if (board[board_x * pix_y + pix_x]) {
-				// already set
+
+			if (BOARD_SQ(pix_x, pix_y) &&
+			    BOARD_SQ(pix_x, pix_y) != orp_letter(orp, spr_x, spr_y)) {
+				// already set, doesn't match
 				if (how == PLACE_TRY)
 					return (false);
 				else if (how == PLACE_DO)
 					errx(EX_OSERR, "i dumb %d", __LINE__);
-				else if (how == PLACE_UNDO)
-					board[board_x * pix_y + pix_x] = 0;
+			} else if (BOARD_SQ(pix_x, pix_y)) {
+				// already set, does match
+				if (how == PLACE_UNDO) {
+					if (MATCH_SQ(pix_x, pix_y)) {
+						total_match--;
+						MATCH_SQ(pix_x, pix_y) = 0;
+					} else
+						BOARD_SQ(pix_x, pix_y) = 0;
+				} else if (how == PLACE_DO) {
+					//BOARD_SQ(pix_x, pix_y) = orp_letter(orp, x, y);
+					MATCH_SQ(pix_x, pix_y)++;
+					total_match++;
+				}
 			} else {
-				// empty
+				// square was empty
 				if (how == PLACE_DO)
-					board[board_x * pix_y + pix_x] = 1;
+					BOARD_SQ(pix_x, pix_y) = orp_letter(orp, spr_x, spr_y);
 				else if (how == PLACE_UNDO)
 					errx(EX_OSERR, "i dumb %d", __LINE__);
 			}
@@ -406,7 +174,7 @@ _tryplace(unsigned x, unsigned y, const struct piece_or *orp, unsigned *ct,
 #define	unplace(x, y, o, p)	_tryplace(x, y, o, p, PLACE_UNDO)
 
 static void
-printboard(unsigned depth)
+printboard(unsigned sc, unsigned depth)
 {
 	unsigned x, y;
 
@@ -417,11 +185,12 @@ printboard(unsigned depth)
 		errx(0, "%s: done spamming", __func__);
 #endif
 
-	printf("\nBoard @ depth=%u (piece remain=%u)\n", depth, total_pc);
+	printf("\nBoard @ depth=%u score=%u (piece remain=%u)\n", depth, sc,
+	    total_pc);
 	for (y = 0; y < board_y; y++) {
 		for (x = 0; x < board_x; x++) {
 			if (board[board_x * y + x] != 0)
-				putchar('#');
+				putchar((char)board[board_x * y + x]);
 			else
 				putchar(' ');
 		}
@@ -433,200 +202,20 @@ printboard(unsigned depth)
 }
 
 static void
-drawpiece(char *bs, const char *nm, unsigned orient, unsigned x, unsigned y)
-{
-	const struct piece_or *orp;
-	struct str_to_piece *sp;
-	unsigned spr_x, spr_y;
-	char letter;
-
-	letter = *nm;
-
-	for (sp = parse_lut; sp->str != NULL; sp++)
-		if (strcmp(sp->std_name, nm) == 0)
-			break;
-
-	if (sp->str == NULL)
-		errx(EX_OSERR, "i dumb %d", __LINE__);
-	if (sp->pc == NULL)
-		errx(EX_OSERR, "i dumb %d", __LINE__);
-
-	orp = &sp->pc->orients[orient];
-	for (spr_y = y; spr_y < y + orp->y; spr_y++) {
-		for (spr_x = x; spr_x < x + orp->x; spr_x++) {
-			if (ORIENT_SQ(orp, spr_x - x, spr_y - y) == 0)
-				continue;
-
-			bs[2 * spr_y * (board_x * 2) + (spr_x * 2)] = letter;
-			if (spr_x + 1 < x + orp->x &&
-			    ORIENT_SQ(orp, spr_x + 1 - x, spr_y - y) != 0)
-				bs[2 * spr_y * (board_x * 2) + (spr_x * 2) + 1] =
-				    letter;
-			if (spr_y + 1 < y + orp->y &&
-			    ORIENT_SQ(orp, spr_x - x, spr_y + 1 - y) != 0)
-				bs[(2 * spr_y + 1) * (board_x * 2) + (spr_x * 2)] =
-				    letter;
-		}
-	}
-}
-
-static void
-printpboard(const char *bs)
-{
-	unsigned px, py;
-
-	fputs("\t    ", stdout);
-	for (px = 0; px < MIN(board_x, 100U); px++)
-		printf("%-2u", px);
-	putchar('\n');
-
-	fputs("\t    ", stdout);
-	for (px = 0; px < board_x - 1; px++)
-		fputs("--", stdout);
-	puts("-");
-
-	for (py = 0; py < 2 * board_y - 1; py++) {
-		if (py % 2 == 0)
-			printf("\t%2u |%.*s|\n", py / 2, (int)board_x * 2 - 1,
-			    &bs[py * (board_x * 2)]);
-		else
-			printf("\t   |%.*s|\n", (int)board_x * 2 - 1,
-			    &bs[py * (board_x * 2)]);
-	}
-
-	fputs("\t    ", stdout);
-	for (px = 0; px < board_x - 1; px++)
-		fputs("--", stdout);
-	puts("-");
-}
-
-static void
 win(unsigned depth)
 {
-	unsigned i;
-	char *boardstr;
 
-	printf("Win!\n\n");
-
-	boardstr = malloc((board_x * 2) * (board_y * 2) + 1);
-	if (boardstr == NULL)
-		err(EX_OSERR, "malloc");
-	memset(boardstr, ' ', (board_x * 2) * (board_y * 2));
-
-	for (i = 0; i < depth; i++) {
-		printf("Piece %s at [%u,%u] orientation %u\n", move[i].p_name,
-		    move[i].x, move[i].y, move[i].p_orient);
-		drawpiece(boardstr, move[i].p_name, move[i].p_orient,
-		    move[i].x, move[i].y);
-	}
-
-	printpboard(boardstr);
-	free(boardstr);
-
+	printboard(total_match, depth);
 	fflush(stdout);
-	exit(0);
-}
 
-/* It saves work to only clean once at the end */
-static unsigned
-floodfillct(unsigned x, unsigned y)
-{
-	unsigned ct;
-	int dx, dy;
-
-	if (x >= board_x || y >= board_y)
-		return (0);
-
-	if (BOARD_SQ(x, y) != 0)
-		return (0);
-
-	if (FILL_SQ(x, y) != 0)
-		return (0);
-
-	FILL_SQ(x, y) = 1;
-	ct = 1;
-
-	for (dx = -1; dx < 2; dx += 2)
-		ct += floodfillct(x + dx, y);
-	for (dy = -1; dy < 2; dy += 2)
-		ct += floodfillct(x, y + dy);
-
-	return (ct);
-}
-
-/*
- * Flood fill from piece edges; if any space is not mod 4 blocks, the board is
- * toast; return TRUE.
- */
-static bool
-holemodfail(unsigned x, unsigned y, const struct piece_or *orp)
-{
-	unsigned ct, spr_x, spr_y, px, py;
-	bool fail;
-
-	fail = false;
-
-	/* Check possible boundary pixels around the newly placed piece. */
-	for (spr_x = 0; spr_x < orp->x; spr_x++) {
-		for (spr_y = 0; spr_y < orp->y; spr_y++) {
-			if (orp->bitmap[orp->x * spr_y + spr_x] != 0)
-				continue;
-
-			ct = floodfillct(x + spr_x, y + spr_y);
-			if (ct % 4 != 0) {
-				fail = true;
-				goto out;
-			}
-		}
-	}
-
-	/* Four borders */
-	for (px = MIN(x - 1, x); px < x + orp->x + 1; px++) {
-		/* top */
-		if (y - 1 < board_y) {
-			ct = floodfillct(px, y - 1);
-			if (ct % 4 != 0) {
-				fail = true;
-				goto out;
-			}
-		}
-		/* bottom */
-		if (y + orp->y < board_y) {
-			ct = floodfillct(px, y + orp->y);
-			if (ct % 4 != 0) {
-				fail = true;
-				goto out;
-			}
-		}
-	}
-	for (py = MIN(y - 1, y); py < y + orp->y + 1; py++) {
-		/* left */
-		if (x - 1 < board_x) {
-			ct = floodfillct(x - 1, py);
-			if (ct % 4 != 0) {
-				fail = true;
-				goto out;
-			}
-		}
-		/* right */
-		if (x + orp->x < board_x) {
-			ct = floodfillct(x + orp->x, py);
-			if (ct % 4 != 0) {
-				fail = true;
-				goto out;
-			}
-		}
-	}
-
-out:
-	memset(board_flood, 0, board_x * board_y * sizeof(board_flood[0]));
-	return (fail);
+	memcpy(movebest, move, sizeof(movebest));
+	bestscore = total_match;
 }
 
 static void
 solve(unsigned depth)
 {
-	struct str_to_piece *sp;
+	struct words *sp;
 
 	const struct piece_or *orp;
 	unsigned or;
@@ -637,22 +226,33 @@ solve(unsigned depth)
 		errx(EX_OSERR, "i dumb");
 
 	/* If we're out of pieces, print successful placements and exit */
-	if (total_pc == 0)
+	if (total_pc == 0 && total_match > bestscore) {
 		win(depth);
+		return;
+	}
 
 	if (zob_seen_this())
 		return;
 
 	/* If we can, play a piece */
-	for (sp = parse_lut; sp->str != NULL; sp++) {
-		if (sp->pc == NULL)
-			continue;
-
+	for (sp = words; *sp->str != '\0'; sp++) {
 		if (sp->ct == 0)
 			continue;
 
-		for (or = 0; or < sp->pc->n_orient; or++) {
-			orp = &sp->pc->orients[or];
+		for (or = 0; or < 2; or++) {
+			struct piece_or por;
+
+			por.wp = sp;
+			por.or = or;
+			if (or == OR_HOR) {
+				por.x = sp->len;
+				por.y = 1;
+			} else {
+				por.x = 1;
+				por.y = sp->len;
+			}
+			orp = &por;
+
 			or_x = orp->x;
 			or_y = orp->y;
 
@@ -662,21 +262,14 @@ solve(unsigned depth)
 						continue;
 
 					place(p_x, p_y, orp, &sp->ct);
-					if (holemodfail(p_x, p_y, orp)) {
-#if 0
-						printf("Culled a board:\n");
-						printboard(depth);
-#endif
-						goto next;
-					}
 
-					move[depth].p_name = sp->std_name;
+					move[depth].p_name = sp->str;
 					move[depth].p_orient = or;
 					move[depth].x = p_x;
 					move[depth].y = p_y;
 
 #if 0
-					printboard(depth);
+					printboard(total_match, depth);
 #endif
 
 					board_tries++;
@@ -684,7 +277,9 @@ solve(unsigned depth)
 						printf("attempted %lu boards\n", board_tries);
 					solve(depth + 1);
 
+#if 0
 next:
+#endif
 					unplace(p_x, p_y, orp, &sp->ct);
 				}
 			}
@@ -702,22 +297,16 @@ main(int argc, char **argv)
 	(void)printboard;
 
 	if (argc < 2)
-		errx(EX_USAGE, "solver: input");
+		err(1, "inp");
 
 	zob_init_first();
 
 	f = fopen(argv[1], "rb");
-	if (f == NULL)
-		err(EX_USAGE, "fopen: %s", argv[1]);
-
 	parse(f);
 	fclose(f);
 
 	if (total_pc > ARRAY_LEN(move))
 		errx(EX_OSERR, "%s: Expand move array", __func__);
-
-	board_x = parse_lut[X_IDX].ct;
-	board_y = parse_lut[Y_IDX].ct;
 
 	zob_board_init(board_x, board_y);
 
@@ -725,15 +314,18 @@ main(int argc, char **argv)
 	if (board == NULL)
 		err(EX_OSERR, "malloc");
 	memset(board, 0, board_x * board_y * sizeof(board[0]));
-	board_flood = malloc(board_x * board_y * sizeof(board_flood[0]));
-	if (board_flood == NULL)
-		err(EX_OSERR, "malloc");
-	memset(board_flood, 0, board_x * board_y * sizeof(board_flood[0]));
 
+	match = malloc(board_x * board_y * sizeof(board[0]));
+	if (match == NULL)
+		err(EX_OSERR, "malloc");
+	memset(match, 0, board_x * board_y * sizeof(board[0]));
+
+#if 1
+	printboard(total_match, 0);
+#endif
 	solve(0);
 
-	printf("No solution\n");
-
 	free(board);
+	free(match);
 	return (0);
 }
