@@ -233,7 +233,7 @@ solve(unsigned depth)
 		return;
 	}
 
-	if (zob_seen_this())
+	if (depth > 1 && zob_seen_this())
 		return;
 
 	score_begin = total_match;

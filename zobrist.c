@@ -195,6 +195,8 @@ game_state(uint8_t *a_board)
 	bw = board_x;
 	bh = board_y;
 
+	/* Top 'by' rows and left 'bx' cols are zero, ignore */
+
 	for (by = 0; by < board_y && memcmp(zerorow, &a_board[by * board_x], board_x) == 0; by++)
 		bh--;
 
@@ -212,8 +214,6 @@ game_state(uint8_t *a_board)
 			bw--;
 		}
 	}
-
-	/* Top by rows and left bx cols are zero, ignore */
 
 	memset(&val, 0, sizeof(val));
 
