@@ -222,6 +222,8 @@ solve(unsigned depth)
 	unsigned or_x, or_y;
 	unsigned p_x, p_y;
 
+	unsigned score_begin;
+
 	if (depth >= ARRAY_LEN(move))
 		errx(EX_OSERR, "i dumb");
 
@@ -233,6 +235,8 @@ solve(unsigned depth)
 
 	if (zob_seen_this())
 		return;
+
+	score_begin = total_match;
 
 	/* If we can, play a piece */
 	for (sp = words; *sp->str != '\0'; sp++) {
@@ -263,6 +267,10 @@ solve(unsigned depth)
 
 					place(p_x, p_y, orp, &sp->ct);
 
+					/* Skip placements, after the first, that aren't matches */
+					if (depth > 0 && total_match == score_begin)
+						goto next;
+
 					move[depth].p_name = sp->str;
 					move[depth].p_orient = or;
 					move[depth].x = p_x;
@@ -277,9 +285,7 @@ solve(unsigned depth)
 						printf("attempted %lu boards\n", board_tries);
 					solve(depth + 1);
 
-#if 0
 next:
-#endif
 					unplace(p_x, p_y, orp, &sp->ct);
 				}
 			}
